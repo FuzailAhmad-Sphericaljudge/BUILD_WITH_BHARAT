@@ -421,7 +421,12 @@ app.get('/api/dashboard', (_req, res) => {
     { channel: 'Government & NGO funding', value: '₹2.5L' }
   ];
 
-  const dashboard = { counts, revenue, priorityQueue: issues.slice(0, 3) };
+  const severityRank = { High: 3, Medium: 2, Low: 1 };
+  const priorityQueue = [...issues]
+    .sort((a, b) => (severityRank[b.severity] ?? 0) - (severityRank[a.severity] ?? 0))
+    .slice(0, 3);
+
+  const dashboard = { counts, revenue, priorityQueue };
   cache.set('dashboard', dashboard);
   res.json(dashboard);
 });

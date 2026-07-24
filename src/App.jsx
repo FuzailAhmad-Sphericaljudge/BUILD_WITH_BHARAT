@@ -70,6 +70,16 @@ function App() {
     });
   };
 
+  const removeIssue = async (issueId) => {
+    const response = await fetch(`/api/issues/${issueId}`, {
+      method: 'DELETE'
+    });
+
+    const payload = await response.json();
+    setStatusMessage(payload.message || 'Issue removed');
+    await fetchData();
+  };
+
   return (
     <div className="app-shell">
       <header className="hero">
@@ -83,16 +93,6 @@ function App() {
             <button type="button" className={activeView === 'home' ? 'active-view' : ''} onClick={() => setActiveView('home')}>Home dashboard</button>
             <button type="button" className={activeView === 'news' ? 'active-view' : ''} onClick={() => setActiveView('news')}>News & patrons</button>
           </div>
-        </div>
-        <div className="hero-card">
-          <h2>Prototype workflow</h2>
-          <ol>
-            <li>Citizen report</li>
-            <li>AI classification</li>
-            <li>Priority listing</li>
-            <li>Contractor assignment</li>
-            <li>Transparent tracking</li>
-          </ol>
         </div>
       </header>
 
@@ -218,6 +218,9 @@ function App() {
                       <span>{issue.authenticity}</span>
                       <span>{issue.status}</span>
                     </div>
+                    <button type="button" className="remove-issue-btn" onClick={() => removeIssue(issue.id)}>
+                      Remove entry
+                    </button>
                   </article>
                 ))}
               </div>

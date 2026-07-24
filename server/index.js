@@ -383,6 +383,24 @@ app.post('/api/issues', async (req, res) => {
   res.status(201).json({ message: 'Issue submitted and classified', issue: newIssue });
 });
 
+app.delete('/api/issues/:id', (req, res) => {
+  const { id } = req.params;
+  if (!id) {
+    return res.status(400).json({ message: 'Issue id is required' });
+  }
+
+  const result = db.run('DELETE FROM issues WHERE id = ?', [id]);
+  if (result.changes === 0) {
+    return res.status(404).json({ message: 'Issue not found' });
+  }
+
+  saveDatabase();
+  cache.del('issues');
+  cache.del('dashboard');
+
+  res.json({ message: 'Issue removed successfully' });
+});
+
 app.get('/api/dashboard', (_req, res) => {
   const cachedDashboard = cache.get('dashboard');
   if (cachedDashboard) {

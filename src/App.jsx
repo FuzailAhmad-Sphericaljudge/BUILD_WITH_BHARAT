@@ -22,6 +22,7 @@ function App() {
     lng: '77.2090'
   });
   const [statusMessage, setStatusMessage] = useState('');
+  const severityRank = { High: 3, Medium: 2, Low: 1 };
 
   const fetchData = async () => {
     const [issuesRes, dashboardRes, newsRes] = await Promise.all([
@@ -45,10 +46,17 @@ function App() {
     fetchData();
   }, []);
 
-  const highestSeverityIssue = useMemo(() => {
-    const severityRank = { High: 3, Medium: 2, Low: 1 };
-    return [...issues].sort((a, b) => severityRank[b.severity] - severityRank[a.severity])[0];
+  const sortedIssues = useMemo(() => {
+    return [...issues].sort((a, b) => {
+      const severityDelta = (severityRank[b.severity] ?? 0) - (severityRank[a.severity] ?? 0);
+      if (severityDelta !== 0) return severityDelta;
+      return Number(b.id) - Number(a.id);
+    });
   }, [issues]);
+
+  const highestSeverityIssue = useMemo(() => {
+    return sortedIssues[0];
+  }, [sortedIssues]);
 
   const submitIssue = async (event) => {
     event.preventDefault();
@@ -201,7 +209,7 @@ function App() {
                 <p>Homepage listing uses a severity-first ranking</p>
               </div>
               <div className="issue-list">
-                {issues.map((issue) => (
+                {sortedIssues.map((issue) => (
                   <article key={issue.id} className="issue-card">
                     <div className="issue-topline">
                       <span className={`badge ${issue.severity.toLowerCase()}`}>{issue.severity}</span>

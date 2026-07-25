@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import { MapContainer, Marker, Popup, TileLayer, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { getApiUrl } from './config';
+
+const DEFAULT_COORDINATES = [28.6139, 77.209];
+const INITIAL_FORM_STATE = {
+  title: '',
+  description: '',
+  location: '',
+  lat: '28.6139',
+  lng: '77.2090'
+};
 
 const markerIcon = L.divIcon({
   className: 'custom-marker',
@@ -9,37 +19,64 @@ const markerIcon = L.divIcon({
   iconAnchor: [9, 9]
 });
 
+function MapController({ position }) {
+  const map = useMap();
+
+  useEffect(() => {
+    map.flyTo(position, 13, { duration: 1.2 });
+  }, [map, position]);
+
+  return null;
+}
+
 function App() {
   const [issues, setIssues] = useState([]);
   const [dashboard, setDashboard] = useState({ counts: {}, revenue: [], priorityQueue: [] });
   const [news, setNews] = useState({ featuredNews: [], patronAdvertisements: [], fundAllocations: [] });
   const [activeView, setActiveView] = useState('home');
-  const [form, setForm] = useState({
-    title: '',
-    description: '',
-    location: '',
-    lat: '28.6139',
-    lng: '77.2090'
-  });
+  const [form, setForm] = useState(INITIAL_FORM_STATE);
+  const [mapPosition, setMapPosition] = useState(DEFAULT_COORDINATES);
   const [statusMessage, setStatusMessage] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isServerWakingUp, setIsServerWakingUp] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const severityRank = { High: 3, Medium: 2, Low: 1 };
 
   const fetchData = async () => {
-    const [issuesRes, dashboardRes, newsRes] = await Promise.all([
-      fetch('/api/issues'),
-      fetch('/api/dashboard'),
-      fetch('/api/news')
-    ]);
+    setIsLoading(true);
+    setIsServerWakingUp(false);
+    setErrorMessage('');
 
-    const [issuesData, dashboardData, newsData] = await Promise.all([
-      issuesRes.json(),
-      dashboardRes.json(),
-      newsRes.json()
-    ]);
+    const wakeupTimer = window.setTimeout(() => {
+      setIsServerWakingUp(true);
+    }, 3000);
 
-    setIssues(issuesData);
-    setDashboard(dashboardData);
-    setNews(newsData);
+    try {
+      const [issuesRes, dashboardRes, newsRes] = await Promise.all([
+        fetch(getApiUrl('/api/issues')),
+        fetch(getApiUrl('/api/dashboard')),
+        fetch(getApiUrl('/api/news'))
+      ]);
+
+      const [issuesData, dashboardData, newsData] = await Promise.all([
+        issuesRes.ok ? issuesRes.json() : Promise.reject(new Error('Unable to load issue reports.')),
+        dashboardRes.ok ? dashboardRes.json() : Promise.reject(new Error('Unable to load dashboard metrics.')),
+        newsRes.ok ? newsRes.json() : Promise.reject(new Error('Unable to load news updates.'))
+      ]);
+
+      setIssues(issuesData);
+      setDashboard(dashboardData);
+      setNews(newsData);
+    } catch (error) {
+      console.error(error);
+      const message = error.message || 'Unable to load dashboard data right now. Please try again shortly.';
+      setErrorMessage(message);
+      setStatusMessage(message);
+    } finally {
+      window.clearTimeout(wakeupTimer);
+      setIsServerWakingUp(false);
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -58,28 +95,75 @@ function App() {
     return sortedIssues[0];
   }, [sortedIssues]);
 
+  const handleFindOnMap = async () => {
+    const address = form.location.trim();
+
+    if (!address) {
+      alert('Please enter an address to find on the map.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(address)}`, {
+        headers: { Accept: 'application/json' }
+      });
+      const results = await response.json();
+      const location = results[0];
+
+      if (!location) {
+        alert('Address not found. Please try a different location.');
+        return;
+      }
+
+      const nextLat = location.lat;
+      const nextLng = location.lon;
+      setForm((currentForm) => ({ ...currentForm, lat: nextLat, lng: nextLng }));
+      setMapPosition([Number(nextLat), Number(nextLng)]);
+      setStatusMessage(`Map centered on ${address}`);
+    } catch (error) {
+      console.error(error);
+      alert('Unable to look up that address right now.');
+    }
+  };
+
   const submitIssue = async (event) => {
     event.preventDefault();
-    const response = await fetch('/api/issues', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form)
-    });
 
-    const payload = await response.json();
-    setStatusMessage(payload.message || 'Issue reported');
-    await fetchData();
-    setForm({
-      title: '',
-      description: '',
-      location: '',
-      lat: '28.6139',
-      lng: '77.2090'
-    });
+    const payload = {
+      title: form.title,
+      description: form.description,
+      location: form.location,
+      lat: form.lat,
+      lng: form.lng
+    };
+
+    try {
+      const response = await fetch(getApiUrl('/api/issues'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.message || 'Unable to submit issue');
+      }
+
+      alert('Issue submitted successfully');
+      setStatusMessage(data.message || 'Issue reported');
+      await fetchData();
+      setForm(INITIAL_FORM_STATE);
+      setMapPosition(DEFAULT_COORDINATES);
+    } catch (error) {
+      console.error(error);
+      const message = error.message || 'Unable to submit issue';
+      setStatusMessage(message);
+      alert(message);
+    }
   };
 
   const removeIssue = async (issueId) => {
-    const response = await fetch(`/api/issues/${issueId}`, {
+    const response = await fetch(getApiUrl(`/api/issues/${issueId}`), {
       method: 'DELETE'
     });
 
@@ -141,6 +225,19 @@ function App() {
         </section>
       ) : (
         <>
+          {isLoading ? (
+            <section className="panel loading-panel">
+              <p>{isServerWakingUp ? 'Waking up the server... this might take up to a minute on the first load.' : 'Loading dashboard data…'}</p>
+            </section>
+          ) : null}
+
+          {errorMessage ? (
+            <section className="panel loading-panel error-panel">
+              <p>{errorMessage}</p>
+              <p className="subtle-message">The backend can take a minute to wake up after a period of inactivity. Please try again shortly.</p>
+            </section>
+          ) : null}
+
           <section className="stats-grid">
             <div className="stat-box">
               <span>Open issues</span>
@@ -166,11 +263,12 @@ function App() {
                 <h2>Interactive map</h2>
                 <p>OpenStreetMap tiles keep the prototype free and usable without paid map keys</p>
               </div>
-              <MapContainer center={[20.5937, 78.9629]} zoom={5} scrollWheelZoom className="map-card">
+              <MapContainer center={mapPosition} zoom={5} scrollWheelZoom className="map-card">
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
+                <MapController position={mapPosition} />
                 {issues.map((issue) => (
                   <Marker key={issue.id} position={[issue.lat, issue.lng]} icon={markerIcon}>
                     <Popup>
@@ -180,6 +278,12 @@ function App() {
                     </Popup>
                   </Marker>
                 ))}
+                <Marker position={mapPosition} icon={markerIcon}>
+                  <Popup>
+                    <strong>Selected location</strong><br />
+                    {form.location || 'Pending address lookup'}
+                  </Popup>
+                </Marker>
               </MapContainer>
             </div>
 
@@ -191,10 +295,9 @@ function App() {
               <form className="report-form" onSubmit={submitIssue}>
                 <input placeholder="Issue title" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required />
                 <textarea placeholder="Describe the issue" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} required />
-                <input placeholder="Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} required />
-                <div className="inline-fields">
-                  <input placeholder="Latitude" value={form.lat} onChange={(e) => setForm({ ...form, lat: e.target.value })} />
-                  <input placeholder="Longitude" value={form.lng} onChange={(e) => setForm({ ...form, lng: e.target.value })} />
+                <div className="inline-fields location-field-row">
+                  <input placeholder="Address / Location" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} required />
+                  <button type="button" onClick={handleFindOnMap}>Find on Map</button>
                 </div>
                 <button type="submit">Submit for AI classification</button>
                 <p className="status-line">{statusMessage}</p>

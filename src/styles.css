@@ -159,6 +159,29 @@ h1 {
   padding: 20px;
 }
 
+.loading-panel {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.loading-panel p {
+  margin: 0;
+  color: var(--navy);
+  font-weight: 600;
+}
+
+.error-panel {
+  border-color: rgba(255, 153, 51, 0.35);
+  background: rgba(255, 250, 243, 0.95);
+}
+
+.subtle-message {
+  margin-top: 8px;
+  font-size: 0.95rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+
 .panel-header h2,
 .panel-header h3 {
   margin: 0 0 6px;
@@ -217,6 +240,10 @@ button:focus-visible,
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
+}
+
+.location-field-row {
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 button {
